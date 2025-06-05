@@ -1,27 +1,33 @@
-import { query } from "../config/db.js";
+import { pool } from "../config/db.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
+// Find user by Google ID
 export const findUserByGoogleId = async (googleId) => {
   try {
-    const query = 'SELECT * FROM users WHERE google_id = $1';
+    const query = 'SELECT * FROM users WHERE oauth_id = $1';
     const result = await pool.query(query, [googleId]);
     return result.rows[0] || null;
   } catch (error) {
-    console.error('Error finding user by Google ID:', error);
+    error.status = 500;
+    error.message = 'Error finding user by Google ID: ' + error.message;
     throw error;
   }
 };
+
+// Find user by ID
 export const findUserById = async (id) => {
   try {
     const query = 'SELECT * FROM users WHERE id = $1';
     const result = await pool.query(query, [id]);
     return result.rows[0] || null;
   } catch (error) {
-    console.error('Error finding user by ID:', error);
+    error.status = 500;
+    error.message = 'Error finding user by ID: ' + error.message;
     throw error;
   }
 };
+
 // Find user by email
 export const findUserByEmail = async (email) => {
   try {
@@ -29,25 +35,27 @@ export const findUserByEmail = async (email) => {
     const result = await pool.query(query, [email]);
     return result.rows[0] || null;
   } catch (error) {
-    console.error('Error finding user by email:', error);
+    error.status = 500;
+    error.message = 'Error finding user by email: ' + error.message;
     throw error;
   }
 };
 
-// Create new user
+// Create new user (OAuth)
 export const createUser = async (userData) => {
   try {
-    const { google_id, email, name, avatar, provider } = userData;
+    const { oauth_id, email, name, avatar, oauth_provider } = userData; // changed oauth_id to oauth_id
     const query = `
-      INSERT INTO users (google_id, email, name, avatar, provider)
+      INSERT INTO users (oauth_id, email, name, avatar, oauth_provider)
       VALUES ($1, $2, $3, $4, $5)
       RETURNING *
     `;
-    const values = [google_id, email, name, avatar, provider];
+    const values = [oauth_id, email, name, avatar, oauth_provider];
     const result = await pool.query(query, values);
     return result.rows[0];
   } catch (error) {
-    console.error('Error creating user:', error);
+    error.status = 500;
+    error.message = 'Error creating user: ' + error.message;
     throw error;
   }
 };
@@ -68,7 +76,8 @@ export const updateUser = async (id, userData) => {
     const result = await pool.query(query, values);
     return result.rows[0];
   } catch (error) {
-    console.error('Error updating user:', error);
+    error.status = 500;
+    error.message = 'Error updating user: ' + error.message;
     throw error;
   }
 };
@@ -80,7 +89,8 @@ export const deleteUser = async (id) => {
     const result = await pool.query(query, [id]);
     return result.rows[0];
   } catch (error) {
-    console.error('Error deleting user:', error);
+    error.status = 500;
+    error.message = 'Error deleting user: ' + error.message;
     throw error;
   }
 };
@@ -89,7 +99,7 @@ export const deleteUser = async (id) => {
 export const getAllUsers = async (limit = 50, offset = 0) => {
   try {
     const query = `
-      SELECT id, email, name, avatar, provider, is_verified, created_at, updated_at
+      SELECT id, email, name, avatar, oauth_provider, is_verified, created_at, updated_at
       FROM users 
       ORDER BY created_at DESC 
       LIMIT $1 OFFSET $2
@@ -97,49 +107,60 @@ export const getAllUsers = async (limit = 50, offset = 0) => {
     const result = await pool.query(query, [limit, offset]);
     return result.rows;
   } catch (error) {
-    console.error('Error getting all users:', error);
+    error.status = 500;
+    error.message = 'Error getting all users: ' + error.message;
     throw error;
   }
 };
 
 const UserModel = {
-  async create({ email, password, name }) {
+  async create({ name, email, password, role, avatar }) {
     try {
       if (!email || !password || !name) {
-        throw new Error("Missing required fields");
+        const error = new Error("Missing required fields");
+        error.status = 400;
+        throw error;
       }
       const hashedPassword = await bcrypt.hash(
         password,
         parseInt(process.env.BCRYPT_SALT_ROUNDS)
       );
-      const { rows } = await query(
-        `INSERT INTO users (email, password_hash, name, role) 
-        VALUES ($1, $2, $3, 'student')
-        RETURNING id, email, name, role, created_at
+      const { rows } = await pool.query(
+        `INSERT INTO users (name, email, password_hash, role, avatar) 
+        VALUES ($1, $2, $3, 'student', $5)
+        RETURNING id, email, name, role, avatar, created_at
         `,
-        [email, hashedPassword, name]
+        [name, email, hashedPassword, name, role, avatar]
       );
 
       if (!rows || rows.length === 0) {
-        throw new Error("User creation failed");
+        const error = new Error("User creation failed");
+        error.status = 500;
+        throw error;
       }
 
       return rows[0];
     } catch (error) {
       if (error.code === "23505") {
-        throw new Error("Email already exists");
+        error.message = "Email already exists";
+        error.status = 409;
+      } else {
+        error.message = `User creation failed: ${error.message}`;
+        error.status = error.status || 500;
       }
-      throw new Error(`User creation failed: ${error.message}`);
+      throw error;
     }
   },
 
   async findByEmail(email) {
     try {
       if (!email) {
-        throw new Error("Email is required");
+        const error = new Error("Email is required");
+        error.status = 400;
+        throw error;
       }
 
-      const { rows } = await query(
+      const { rows } = await pool.query(
         `SELECT id, email, name, role, password_hash, oauth_provider 
          FROM users
          WHERE email = $1`,
@@ -148,36 +169,45 @@ const UserModel = {
       if (rows.length > 0) {
         return rows[0];
       }
+      return null;
     } catch (error) {
-      throw new Error(`Failed to find user by email: ${error.message}`);
+      error.message = `Failed to find user by email: ${error.message}`;
+      error.status = error.status || 500;
+      throw error;
     }
   },
 
   async findById(id) {
     try {
       if (!id) {
-        throw new Error("User ID is required");
+        const error = new Error("User ID is required");
+        error.status = 400;
+        throw error;
       }
-      const { rows } = await query(
-        `SELECT id, email, name, role, created _at FROM users
+      const { rows } = await pool.query(
+        `SELECT id, email, name, role, created_at FROM users
          WHERE id = $1`,
         [id]
       );
       return rows[0] || null;
     } catch (error) {
-      throw new Error(`Failed to find user by ID: ${error.message}`);
+      error.message = `Failed to find user by ID: ${error.message}`;
+      error.status = error.status || 500;
+      throw error;
     }
   },
 
-  
-  
   generateToken(userId) {
     if (!userId) {
-      throw new Error("User ID is required for token generation");
+      const error = new Error("User ID is required for token generation");
+      error.status = 400;
+      throw error;
     }
 
     if (!process.env.JWT_SECRET) {
-      throw new Error("JWT secret is not configured");
+      const error = new Error("JWT secret is not configured");
+      error.status = 500;
+      throw error;
     }
 
     return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
@@ -198,25 +228,50 @@ const UserModel = {
     }
   },
 
-  async updatePassword(newPassword, userId) {
+  async updatePassword(userId, newPassword) {
     try {
       if (!newPassword || !userId) {
-        throw new Error("New password and user ID are required");
+        const error = new Error("New password and user ID are required");
+        error.status = 400;
+        throw error;
       }
-      const hashedNewPassword = bcrypt.hash(
+      const hashedNewPassword = await bcrypt.hash(
         newPassword,
         parseInt(process.env.BCRYPT_SALT_ROUNDS)
       );
-      const { rowCount } = await query(
+      const { rowCount } = await pool.query(
         `UPDATE users SET password_hash = $1 WHERE id = $2`,
         [hashedNewPassword, userId]
       );
       if (rowCount === 0) {
-        throw new Error("User not found or password not updated");
+        const error = new Error("User not found or password not updated");
+        error.status = 404;
+        throw error;
       }
       return true;
     } catch (error) {
-      throw new Error(`Password update failed: ${error.message}`);
+      error.message = `Password update failed: ${error.message}`;
+      error.status = error.status || 500;
+      throw error;
+    }
+  },
+
+  async updateLastLogin(userId) {
+    try {
+      if (!userId) {
+        const error = new Error("User ID is required");
+        error.status = 400;
+        throw error;
+      }
+      await pool.query(
+        `UPDATE users SET last_login = NOW() WHERE id = $1`,
+        [userId]
+      );
+      return true;
+    } catch (error) {
+      error.message = `Failed to update last login: ${error.message}`;
+      error.status = error.status || 500;
+      throw error;
     }
   },
 };

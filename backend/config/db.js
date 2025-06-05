@@ -20,18 +20,14 @@ pool.on('error', (err) => {
 const testConnection = async () => {
   try {
     const client = await pool.connect();
-    console.log('✅ Database connected successfully');
+    console.log('Database connected successfully');
     client.release();
   } catch (err) {
-    console.error('❌ Database connection failed:', err.message);
+    console.error('Database connection failed:', err.message);
     process.exit(1);
   }
 };
 
-// pool.connect().then(() => {
-//   console.log("Database connected");
-// });
+const query = (text, params) => pool.query(text, params);
 
-export const query = (text, params) => pool.query(text, params);
-
-export { pool, testConnection };
+export { pool, testConnection, query };
