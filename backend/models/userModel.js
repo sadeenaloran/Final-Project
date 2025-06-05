@@ -2,28 +2,15 @@ import { pool } from "../config/db.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
-// Find user by Google ID
-export const findUserByGoogleId = async (googleId) => {
-  try {
-    const query = 'SELECT * FROM users WHERE oauth_id = $1';
-    const result = await pool.query(query, [googleId]);
-    return result.rows[0] || null;
-  } catch (error) {
-    error.status = 500;
-    error.message = 'Error finding user by Google ID: ' + error.message;
-    throw error;
-  }
-};
-
 // Find user by ID
 export const findUserById = async (id) => {
   try {
-    const query = 'SELECT * FROM users WHERE id = $1';
+    const query = "SELECT * FROM users WHERE id = $1";
     const result = await pool.query(query, [id]);
     return result.rows[0] || null;
   } catch (error) {
     error.status = 500;
-    error.message = 'Error finding user by ID: ' + error.message;
+    error.message = "Error finding user by ID: " + error.message;
     throw error;
   }
 };
@@ -31,12 +18,12 @@ export const findUserById = async (id) => {
 // Find user by email
 export const findUserByEmail = async (email) => {
   try {
-    const query = 'SELECT * FROM users WHERE email = $1';
+    const query = "SELECT * FROM users WHERE email = $1";
     const result = await pool.query(query, [email]);
     return result.rows[0] || null;
   } catch (error) {
     error.status = 500;
-    error.message = 'Error finding user by email: ' + error.message;
+    error.message = "Error finding user by email: " + error.message;
     throw error;
   }
 };
@@ -44,18 +31,18 @@ export const findUserByEmail = async (email) => {
 // Create new user (OAuth)
 export const createUser = async (userData) => {
   try {
-    const { oauth_id, email, name, avatar, oauth_provider } = userData; // changed oauth_id to oauth_id
+    const { oauth_id, email, name, avatar, oauth_provider, role } = userData; // changed oauth_id to oauth_id
     const query = `
-      INSERT INTO users (oauth_id, email, name, avatar, oauth_provider)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO users (oauth_id, email, name, avatar, oauth_provider, role)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
     `;
-    const values = [oauth_id, email, name, avatar, oauth_provider];
+    const values = [oauth_id, email, name, avatar, oauth_provider, role];
     const result = await pool.query(query, values);
     return result.rows[0];
   } catch (error) {
     error.status = 500;
-    error.message = 'Error creating user: ' + error.message;
+    error.message = "Error creating user: " + error.message;
     throw error;
   }
 };
@@ -77,7 +64,7 @@ export const updateUser = async (id, userData) => {
     return result.rows[0];
   } catch (error) {
     error.status = 500;
-    error.message = 'Error updating user: ' + error.message;
+    error.message = "Error updating user: " + error.message;
     throw error;
   }
 };
@@ -85,12 +72,12 @@ export const updateUser = async (id, userData) => {
 // Delete user
 export const deleteUser = async (id) => {
   try {
-    const query = 'DELETE FROM users WHERE id = $1 RETURNING *';
+    const query = "DELETE FROM users WHERE id = $1 RETURNING *";
     const result = await pool.query(query, [id]);
     return result.rows[0];
   } catch (error) {
     error.status = 500;
-    error.message = 'Error deleting user: ' + error.message;
+    error.message = "Error deleting user: " + error.message;
     throw error;
   }
 };
@@ -108,7 +95,7 @@ export const getAllUsers = async (limit = 50, offset = 0) => {
     return result.rows;
   } catch (error) {
     error.status = 500;
-    error.message = 'Error getting all users: ' + error.message;
+    error.message = "Error getting all users: " + error.message;
     throw error;
   }
 };
@@ -127,10 +114,10 @@ const UserModel = {
       );
       const { rows } = await pool.query(
         `INSERT INTO users (name, email, password_hash, role, avatar) 
-        VALUES ($1, $2, $3, 'student', $5)
-        RETURNING id, email, name, role, avatar, created_at
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, email, name, role, avatar, created_at
         `,
-        [name, email, hashedPassword, name, role, avatar]
+        [name, email, hashedPassword, role, avatar]
       );
 
       if (!rows || rows.length === 0) {
@@ -193,6 +180,19 @@ const UserModel = {
     } catch (error) {
       error.message = `Failed to find user by ID: ${error.message}`;
       error.status = error.status || 500;
+      throw error;
+    }
+  },
+
+  // Find user by Google ID
+  async findUserByGoogleId(oauthId) {
+    try {
+      const query = "SELECT * FROM users WHERE oauth_id = $1";
+      const result = await pool.query(query, [oauthId]);
+      return result.rows[0] || null;
+    } catch (error) {
+      error.status = 500;
+      error.message = "Error finding user by Google ID: " + error.message;
       throw error;
     }
   },
@@ -263,10 +263,9 @@ const UserModel = {
         error.status = 400;
         throw error;
       }
-      await pool.query(
-        `UPDATE users SET last_login = NOW() WHERE id = $1`,
-        [userId]
-      );
+      await pool.query(`UPDATE users SET last_login = NOW() WHERE id = $1`, [
+        userId,
+      ]);
       return true;
     } catch (error) {
       error.message = `Failed to update last login: ${error.message}`;

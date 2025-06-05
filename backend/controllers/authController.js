@@ -10,29 +10,67 @@ import passport from "../config/passport.js";
 import { generateToken, generateRefreshToken } from "../utils/jwt.js";
 import { sanitizeUser, createResponse } from "../utils/helpers.js";
 
-// Start Google OAuth flow
 export const googleAuth = passport.authenticate("google", {
   scope: ["profile", "email"],
   session: false,
 });
 
-// Handle Google OAuth callback
-export const googleCallBack = (req, res, next) => {
-  passport.authenticate(
-    "google",
-    { failureRedirect: "/login", session: false },
-    async (err, user) => {
-      if (err || !user) {
-        // handle error or failed login
-        return res.redirect(`${process.env.CLIENT_URL}/login?error=oauth_failed`);
-      }
-      // user should now be in your DB
-      // generate token, redirect, etc.
-    }
-  )(req, res, next);
-};
-
 const AuthController = {
+  googleAuthCallback: async (req, res) => {
+    try {
+      const token = UserModel.generateToken(req.user.id, req.user.role);
+      await UserModel.updateLastLogin(req.user.id);
+
+      res.redirect(
+        `${process.env.CORS_ORIGIN}/auth/success?` +
+          `token=${token}&` +
+          `id=${req.user.id}&` +
+          `name=${encodeURIComponent(req.user.name)}&` +
+          `email=${encodeURIComponent(req.user.email)}&` +
+          `avatar=${encodeURIComponent(req.user.avatar || "")}&` +
+          `role=${req.user.role}`
+      );
+    } catch (error) {
+      console.error(`Google callback error: ${error.message}`);
+      res.redirect(`${process.env.CORS_ORIGIN}/login?error=oauth_failed`);
+    }
+  },
+
+  async linkGoogleAccount(req, res, next) {
+    try {
+      const { token: googleToken } = req.body;
+      if (!googleToken) {
+        return res.status(400).json({ success: false, message: "Google token is required" });
+      }
+
+      // You need to implement or import this.verifyGoogleToken!
+      const googleUser = await AuthController.verifyGoogleToken(googleToken);
+      if (!googleUser) {
+        return res.status(400).json({ success: false, message: "Invalid Google token" });
+      }
+
+      // Link to existing account
+      const updatedUser = await UserModel.linkOAuthAccount(req.user.id, {
+        provider: "google",
+        providerId: googleUser.sub,
+        email: googleUser.email,
+      });
+
+      res.json({
+        success: true,
+        user: {
+          id: updatedUser.id,
+          name: updatedUser.name,
+          email: updatedUser.email,
+          oauthProvider: updatedUser.oauth_provider,
+          role: updatedUser.role,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   register: async (req, res, next) => {
     try {
       const { error, value } = registerSchema.validate(req.body);
@@ -242,7 +280,7 @@ const AuthController = {
           .json({ success: false, message: "Current password is incorrect" });
       }
 
-      await UserModel.updatePassword(userId, newPassword, confirmPassword);
+      await UserModel.updatePassword(userId, newPassword);
       res.json({
         success: true,
         message: "Password updated successfully",
@@ -254,6 +292,17 @@ const AuthController = {
       });
     }
   },
+};
+
+// Add a static or utility method for verifying Google token
+AuthController.verifyGoogleToken = async function (googleToken) {
+  const { OAuth2Client } = await import('google-auth-library');
+  const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+  const ticket = await client.verifyIdToken({
+    idToken: googleToken,
+    audience: process.env.GOOGLE_CLIENT_ID,
+  });
+  return ticket.getPayload();
 };
 
 // Refresh access token (named export, outside the object)
