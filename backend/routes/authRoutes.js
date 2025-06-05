@@ -1,38 +1,23 @@
 import express from "express";
-import {
-  googleAuth,
-  googleCallback,
-  getCurrentUser,
-  logout,
-  refreshToken
-} from '../controllers/authController.js';
-import AuthController from '../controllers/authController.js';
-import { isAuthenticated, authenticateJWT, authenticate } from '../middleware/authMiddleware.js';
+import AuthController, { googleAuth, googleCallBack, refreshToken } from '../controllers/authController.js';
+import { authenticateJWT } from '../middleware/authMiddleware.js';
+import UserModel from '../models/userModel.js';
 
 const router = express.Router();
 
-// console.log('Middleware check:', {
-//   authenticate: typeof authenticate,
-//   AuthController: {
-//     register: typeof AuthController?.register,
-//     login: typeof AuthController?.login,
-//     changePassword: typeof AuthController?.changePassword
-//   }
-// });
-// Google OAuth routes
-router.get('/google', googleAuth);
-router.get('/google/callback', googleCallback);
 
+router.get('/google', googleAuth);
+router.get('/google/callback', googleCallBack);
+
+// Auth routes
 router.post("/register", AuthController.register);
 router.post("/login", AuthController.login);
-router.post("/get-current-login-info",authenticateJWT, getCurrentUser);
-router.post("/change-password", authenticateJWT, AuthController.changePassword);
+router.post('/logout', authenticateJWT, AuthController.logout);
+router.put("/change-password", authenticateJWT, AuthController.changePassword);
+router.get("/getme", authenticateJWT, AuthController.getMe);
 
-
-// User authentication routes
-router.get('/user', isAuthenticated, getCurrentUser);
-router.post('/logout', authenticateJWT, logout);
-router.post('/refresh', refreshToken); 
+// Token refresh
+router.post('/refresh', refreshToken);
 
 // JWT protected route example
 router.get('/protected', authenticateJWT, (req, res) => {
@@ -41,6 +26,13 @@ router.get('/protected', authenticateJWT, (req, res) => {
     message: 'This is a protected route',
     user: req.user
   });
-}); 
+});
+
+// Update last login
+router.put('/update-last-login', authenticateJWT, async (req, res) => {
+  const userId = req.user.id;
+  await UserModel.updateLastLogin(userId);
+  res.json({ success: true, message: 'Last login updated' });
+});
 
 export default router;
