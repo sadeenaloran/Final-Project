@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken";
-import UserModel from "../models/userModel.js";
+import UserModel, { findUserById } from "../models/userModel.js";
 import { createResponse } from "../utils/helpers.js";
 
 // JWT authentication middleware (strict)

@@ -1,11 +1,7 @@
 import passport from "passport";
+import UserModel from "../models/userModel.js";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import dotenv from "dotenv";
-import {
-  findUserByGoogleId,
-  createUser,
-  findUserById,
-} from "../models/userModel.js";
 
 dotenv.config();
 
@@ -19,19 +15,39 @@ passport.use(
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
-        let user = await findUserByGoogleId(profile.id);
-        if (user) {
-          return done(null, user);
+        const oauthId = profile.id;
+        const email = profile.emails[0].value;
+        const name = profile.displayName;
+        const avatar = profile.photos && profile.photos[0] ? profile.photos[0].value : null;
+
+        // Try to find user by OAuth ID
+        let user = await UserModel.findUserByGoogleId(oauthId);
+
+        if (!user) {
+          // Try to find user by email
+          const existingUser = await UserModel.findByEmail(email);
+
+          if (existingUser) {
+            // Link Google account to existing user
+            user = await UserModel.linkOAuthAccount(existingUser.id, {
+              provider: "google",
+              providerId: oauthId,
+              email: email,
+            });
+          } else {
+            // Create new user with Google info
+            user = await UserModel.create({
+              email,
+              name,
+              oauth_provider: "google",
+              oauth_id: oauthId,
+              avatar,
+              password: null,
+              role: "student", // or your default role
+            });
+          }
         }
-        // CREATE the user in the database if not found!
-        const newUser = {
-          oauth_id: profile.id,
-          email: profile.emails[0].value,
-          name: profile.displayName,
-          avatar: profile.photos && profile.photos[0] ? profile.photos[0].value : null,
-          oauth_provider: "google",
-        };
-        user = await createUser(newUser); // <--- THIS LINE IS REQUIRED!
+
         return done(null, user);
       } catch (error) {
         return done(error, null);
@@ -46,7 +62,7 @@ passport.serializeUser((user, done) => {
 
 passport.deserializeUser(async (id, done) => {
   try {
-    const user = await findUserById(id);
+    const user = await UserModel.findById(id);
     done(null, user);
   } catch (error) {
     done(error, null);

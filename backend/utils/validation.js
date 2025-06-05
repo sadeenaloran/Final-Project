@@ -19,6 +19,13 @@ export const registerSchema = Joi.object({
       "Password must be at least 8 characters long and include at least one uppercase letter, one lowercase letter, one number, and one special character."
     )
     .required(),
+    confirm_password: Joi.string()
+    .valid(Joi.ref("password"))
+    .required()
+    .messages({
+      "any.only": "Passwords do not match",
+      "string.empty": "Please confirm your password",
+    }),
 });
 
 export const loginSchema = Joi.object({
@@ -44,9 +51,8 @@ export const changePasswordSchema = Joi.object({
         "Password must be at least 8 characters long and include at least one uppercase letter, one lowercase letter, one number, and one special character.",
       "string.empty": "New password is required",
       "any.invalid": "New password cannot be the same as current password",
-    }),
-
-  confirmPassword: Joi.string()
+    }), 
+    confirmPassword: Joi.string()
     .valid(Joi.ref("newPassword"))
     .required()
     .messages({
