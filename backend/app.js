@@ -19,7 +19,6 @@ import passport from "./config/passport.js";
 // Import utilities
 import { createResponse } from "./utils/helpers.js";
 
-
 const app = express();
 
 app.use(
