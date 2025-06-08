@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken";
-import UserModel, { findUserById } from "../models/userModel.js";
+import UserModel from "../models/userModel.js";
 import {
   registerSchema,
   loginSchema,
@@ -18,17 +18,42 @@ export const googleAuth = passport.authenticate("google", {
 const AuthController = {
   googleAuthCallback: async (req, res) => {
     try {
-      const token = UserModel.generateToken(req.user.id, req.user.role);
-      await UserModel.updateLastLogin(req.user.id);
+      // 1. Get Google user info from req.user
+      const { email, name, avatar, sub: googleId } = req.user;
 
+      // 2. Try to find user by email
+      let user = await UserModel.findByEmail(email);
+
+      if (!user) {
+        // 3. If not found, create a new user
+        user = await UserModel.create({
+          name,
+          email,
+          avatar,
+          oauth_provider: "google",
+          oauth_id: googleId,
+          role: "student", // or your default
+        });
+      } else {
+        // 4. If found, update OAuth info if needed
+        await UserModel.linkOAuthAccount(user.id, {
+          provider: "google",
+          providerId: googleId,
+          email,
+        });
+      }
+
+      // 5. Issue JWT/session as for local login
+      const token = UserModel.generateToken(user.id, user.role);
+      await UserModel.updateLastLogin(user.id);
+
+      // 6. Redirect or respond with token and user info
       res.redirect(
-        `${process.env.CORS_ORIGIN}/auth/success?` +
-          `token=${token}&` +
-          `id=${req.user.id}&` +
-          `name=${encodeURIComponent(req.user.name)}&` +
-          `email=${encodeURIComponent(req.user.email)}&` +
-          `avatar=${encodeURIComponent(req.user.avatar || "")}&` +
-          `role=${req.user.role}`
+        `${process.env.CORS_ORIGIN}/auth/success?token=${token}&id=${user.id}&name=${encodeURIComponent(
+          user.name
+        )}&email=${encodeURIComponent(
+          user.email
+        )}&avatar=${encodeURIComponent(user.avatar || "")}&role=${user.role}`
       );
     } catch (error) {
       console.error(`Google callback error: ${error.message}`);
@@ -40,13 +65,17 @@ const AuthController = {
     try {
       const { token: googleToken } = req.body;
       if (!googleToken) {
-        return res.status(400).json({ success: false, message: "Google token is required" });
+        return res
+          .status(400)
+          .json({ success: false, message: "Google token is required" });
       }
 
       // You need to implement or import this.verifyGoogleToken!
       const googleUser = await AuthController.verifyGoogleToken(googleToken);
       if (!googleUser) {
-        return res.status(400).json({ success: false, message: "Invalid Google token" });
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid Google token" });
       }
 
       // Link to existing account
@@ -94,7 +123,7 @@ const AuthController = {
           .status(409)
           .json({ success: false, message: "Email already in use" });
       }
-      const newUser = await UserModel.create({ name, email, password, role });
+      const newUser = await UserModel.create({ name, email, password, confirm_password, role });
 
       const token = UserModel.generateToken(newUser.id, newUser.role);
 
@@ -223,7 +252,7 @@ const AuthController = {
           .status(401)
           .json({ success: false, message: "User not authenticated" });
       }
-      const user = await findUserById(req.user.id);
+      const user = await UserModel.findById(req.user.id);
       if (!user) {
         return res
           .status(404)
@@ -267,6 +296,13 @@ const AuthController = {
         return res
           .status(404)
           .json({ success: false, message: "User not found" });
+      }
+
+      // Add this check:
+      if (!user.password_hash) {
+        return res
+          .status(400)
+          .json({ success: false, message: "No password set for this account" });
       }
 
       const isMatch = await UserModel.verifyPassword(
