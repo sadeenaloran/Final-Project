@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken";
-import UserModel, { findUserById } from "../models/userModel.js";
+import UserModel from "../models/userModel.js";
 import { createResponse } from "../utils/helpers.js";
 
 // JWT authentication middleware (strict)
@@ -118,7 +118,7 @@ export const authenticateJWT = async (req, res, next) => {
         );
     }
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await findUserById(decoded.id);
+    const user = await UserModel.findById(decoded.id);
     if (!user) {
       return res
         .status(401)
@@ -141,7 +141,7 @@ export const optionalJWT = async (req, res, next) => {
 
     if (token) {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const user = await findUserById(decoded.id);
+      const user = await UserModel.findById(decoded.id);
       if (user) {
         req.user = user;
       }

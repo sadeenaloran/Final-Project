@@ -6,10 +6,16 @@ import helmet from "helmet";
 import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 import dotenv from "dotenv";
-import userRoutes from './routes/userRoutes.js';
+import userRoutes from "./routes/userRoutes.js";
 import authRoute from "./routes/authRoutes.js";
+import courseRoutes from "./routes/courseRoutes.js";
 import "./config/db.js";
-
+import adminRoutes from "./routes/adminRoutes.js";
+import categoryRoutes from "./routes/categoryRoutes.js";
+import moduleRoutes from "./routes/moduleRoutes.js";
+import lessonsRoutes from "./routes/lessonRoutes.js";
+import AssignmentRoutes from "./routes/assignmentRoutes.js";
+import submissionRoutes from "./routes/submissionRoutes.js";
 dotenv.config();
 
 // Import configurations
@@ -54,8 +60,8 @@ app.use(
 app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 
 // Body parsing middleware
-app.use(express.json({limit: '10mb'}));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());
 
 // Session middleware
@@ -66,27 +72,39 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 app.use("/api/auth", authRoute);
-app.use('/api/users', userRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/admin", adminRoutes);
+//for courses and categories and modules
+app.use("/api/courses", courseRoutes);
+app.use("/api/categories", categoryRoutes);
+app.use("/api/courses", moduleRoutes);
+app.use("/api/lessons", lessonsRoutes);
+app.use("/api/assignments", AssignmentRoutes);
+app.use("/api/submissions", submissionRoutes);
 
 app.get("/health", (req, res) => {
-  res.json(createResponse(true, 'Server is running', {
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime()
-  }));
+  res.json(
+    createResponse(true, "Server is running", {
+      status: "healthy",
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+    })
+  );
 });
 
-app.get('/', (req, res) => {
-  res.json(createResponse(true, 'OAuth 2 Google Authentication API', {
-    version: '1.0.0',
-    endpoints: {
-      auth: '/auth/google',
-      callback: '/auth/google/callback',
-      user: '/auth/user',
-      logout: '/auth/logout',
-      profile: '/user/profile'
-    }
-  }));
+app.get("/", (req, res) => {
+  res.json(
+    createResponse(true, "OAuth 2 Google Authentication API", {
+      version: "1.0.0",
+      endpoints: {
+        auth: "/auth/google",
+        callback: "/auth/google/callback",
+        user: "/auth/user",
+        logout: "/auth/logout",
+        profile: "/user/profile",
+      },
+    })
+  );
 });
 
 export default app;
